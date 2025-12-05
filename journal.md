@@ -61,3 +61,18 @@ conda create -n cs336-syst python=3.11
 conda activate cs336-syst
 pip install -r requirements.txt
 ```
+
+
+**Fused Softmax:**
+- The .warmup() call already compiles the kernel with the specified BLOCK_SIZE and num_stages values:
+```python
+kernel = softmax_kernel.warmup(y, x, x.stride(0), y.stride(0), n_rows, n_cols, 
+                               BLOCK_SIZE=BLOCK_SIZE, num_stages=num_stages, 
+                               num_warps=num_warps, grid=(1, ))
+```
+The returned kernel object is a pre-compiled version that no longer needs (or accepts) these metaparameters. You only pass the regular runtime arguments when launching it.
+- to add numba
+```
+pip install numba
+conda install -c conda-forge cudatoolkit-dev
+```
