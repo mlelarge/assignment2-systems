@@ -76,3 +76,10 @@ The returned kernel object is a pre-compiled version that no longer needs (or ac
 pip install numba
 conda install -c conda-forge cudatoolkit-dev
 ```
+
+On H100, JZ:
+```
+module load arch/h100
+module load cuda/12.4.1
+module load pytorch-gpu/py3/2.5.1
+```

@@ -13,6 +13,7 @@ from numba import cuda
 
 
 import warnings
+
 warnings.filterwarnings(
     action="ignore", category=numba.NumbaPerformanceWarning, module="numba"
 )
@@ -35,6 +36,7 @@ def map_kernel(out, a):
     i = cuda.threadIdx.x
     # Each thread adds 10 to one element
     out[i] = a[i] + 10
+
 
 # Size of our array
 SIZE = 4
@@ -75,7 +77,7 @@ def zip_spec(a, b):
 out = np.zeros(SIZE)
 a = np.arange(SIZE)
 b = np.arange(SIZE)
-zip_spec(a,b)
+zip_spec(a, b)
 
 
 # In[7]:
@@ -89,11 +91,13 @@ def zip_kernel(out, a, b):
 
     out[i] = a[i] + b[i]
 
+
 def init_pb(a=a, b=b, out=out):
     a_device = cuda.to_device(a)
     b_device = cuda.to_device(b)
     out_device = cuda.to_device(out)
     return a_device, b_device, out_device
+
 
 a_device, b_device, out_device = init_pb()
 
@@ -123,9 +127,10 @@ def zip_guard_kernel(out, a, b, size):
     if i < size:
         out[i] = a[i] + b[i]
 
+
 a_device, b_device, out_device = init_pb()
 
-NUM_TRHEADS = 2*SIZE
+NUM_TRHEADS = 2 * SIZE
 zip_guard_kernel[1, NUM_TRHEADS](out_device, a_device, b_device, SIZE)
 
 # Copy result back to CPU
@@ -156,7 +161,8 @@ def map_2d_kernel(out, a, size):
     i = cuda.threadIdx.x
     j = cuda.threadIdx.y
     if i < size and j < size:
-        out[i,j] = a[i,j] + 10
+        out[i, j] = a[i, j] + 10
+
 
 a_device, b_device, out_device = init_pb(a=a, out=np.zeros_like(out))
 
@@ -189,11 +195,12 @@ def broadcast_kernel(out, a, b, size):
     i = cuda.threadIdx.x
     j = cuda.threadIdx.y
     if i < size and j < size:
-        out[i,j] = a[i,0] + b[0,j]
+        out[i, j] = a[i, 0] + b[0, j]
+
 
 a_device, b_device, out_device = init_pb(a=a, b=b, out=np.zeros_like(out))
 
-THREADS = (2*SIZE, SIZE)
+THREADS = (2 * SIZE, SIZE)
 broadcast_kernel[1, THREADS](out_device, a_device, b_device, SIZE)
 
 result = out_device.copy_to_host()
@@ -210,10 +217,11 @@ print(f"Correct:  {np.allclose(result, expected)}")
 
 @cuda.jit
 def broadcast_grid_kernel(out, a, b, size):
-    i = cuda.blockIdx.x 
-    j = cuda.blockIdx.y 
+    i = cuda.blockIdx.x
+    j = cuda.blockIdx.y
     if i < size and j < size:
-        out[i,j] = a[i,0] + b[0,j]
+        out[i, j] = a[i, 0] + b[0, j]
+
 
 a_device, b_device, out_device = init_pb(a=a, b=b, out=np.zeros_like(out))
 
@@ -239,12 +247,13 @@ def broadcast_grid_kernel(out, a, b, size):
     i = cuda.threadIdx.x
     j = cuda.blockIdx.y
     if i < size and j < size:
-        out[i,j] = a[i,0] + b[0,j]
+        out[i, j] = a[i, 0] + b[0, j]
+
 
 a_device, b_device, out_device = init_pb(a=a, b=b, out=np.zeros_like(out))
 
 THREADS = SIZE
-GRID = (1, SIZE)  
+GRID = (1, SIZE)
 broadcast_grid_kernel[GRID, THREADS](out_device, a_device, b_device, SIZE)
 
 result = out_device.copy_to_host()
@@ -259,7 +268,7 @@ print(f"Correct:  {np.allclose(result, expected)}")
 # In[15]:
 
 
-SIZE//2
+SIZE // 2
 
 
 # In[16]:
@@ -267,15 +276,16 @@ SIZE//2
 
 @cuda.jit
 def broadcast_grid_kernel(out, a, b, size):
-    i = cuda.blockIdx.x*cuda.blockDim.x + cuda.threadIdx.x
-    j = cuda.blockIdx.y*cuda.blockDim.y + cuda.threadIdx.y
+    i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    j = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     if i < size and j < size:
-        out[i,j] = a[i,0] + b[0,j]
+        out[i, j] = a[i, 0] + b[0, j]
+
 
 a_device, b_device, out_device = init_pb(a=a, b=b, out=np.zeros_like(out))
 
-THREADS = (SIZE//2 , SIZE // 2)
-GRID = (SIZE//2, SIZE//2)  
+THREADS = (SIZE // 2, SIZE // 2)
+GRID = (SIZE // 2, SIZE // 2)
 broadcast_grid_kernel[GRID, THREADS](out_device, a_device, b_device, SIZE)
 
 result = out_device.copy_to_host()
@@ -288,7 +298,7 @@ print(f"Correct:  {np.allclose(result, expected)}")
 
 
 # `blockDim.x = blockDim.y =2 `
-# 
+#
 # | blockIdx.x | blockIdx.y  | threadIdx.x | threadIdx.y | **i** | **j** | Computes |
 # |------------|---------------|-------------|-------------|-------|-------|----------|
 # | 0 | 0 | 0 | 0 | **0** | **0** | out[0,0] |
@@ -310,6 +320,7 @@ def pool_spec(a):
     for i in range(a.shape[0]):
         out[i] = a[max(i - 2, 0) : i + 1].sum()
     return out
+
 
 SIZE = 8
 a = np.arange(SIZE)
@@ -346,10 +357,11 @@ def pool_kernel(out, a, size):
             temp_sum += a[k]  # Use global memory to handle cross-block boundaries
         out[i] = temp_sum
 
+
 a_device, b_device, out_device = init_pb(a=a, out=np.zeros_like(out))
 
-THREADS = SIZE//2
-GRID = (2,1)  
+THREADS = SIZE // 2
+GRID = (2, 1)
 pool_kernel[GRID, THREADS](out_device, a_device, SIZE)
 
 result = out_device.copy_to_host()
@@ -360,11 +372,13 @@ print(f"Output:   {result}")
 print(f"Expected: {expected}")
 print(f"Correct:  {np.allclose(result, expected)}")
 r = 3
-print(f"number of access to global memory: 1 + 2 + {THREADS-2} threads x {r} reads = {1+2+(THREADS-2)*r} global reads per block -> {2*(1+2+(THREADS-2)*r)} global reads in total")
+print(
+    f"number of access to global memory: 1 + 2 + {THREADS-2} threads x {r} reads = {1+2+(THREADS-2)*r} global reads per block -> {2*(1+2+(THREADS-2)*r)} global reads in total"
+)
 
 
 # The method below allows for 8+4=12 global reads in total.
-# 
+#
 # **How it works:**
 # ```
 # Global:      [0, 1, 2, 3, 4, 5, 6, 7]
@@ -381,7 +395,9 @@ print(f"number of access to global memory: 1 + 2 + {THREADS-2} threads x {r} rea
 
 
 TPB = 4  # Threads per block
-SharedMem = TPB + 2 # cannot computed at runtime
+SharedMem = TPB + 2  # cannot computed at runtime
+
+
 @cuda.jit
 def pool_kernel_shared(out, a, size):
     # Allocate shared memory with HALO (extra elements for boundary)
@@ -404,7 +420,7 @@ def pool_kernel_shared(out, a, size):
             shared[0] = a[start_idx - 2]
         else:
             shared[1] = 0.0
-            shared[0] = 0.0 # Padding for out-of-bounds
+            shared[0] = 0.0  # Padding for out-of-bounds
 
     # Wait for all threads to finish loading
     cuda.syncthreads()
@@ -416,6 +432,7 @@ def pool_kernel_shared(out, a, size):
         for k in range(max(0, 3 - (i + 1)), 3):  # At most 3 elements
             temp_sum += shared[local_i + 2 - (2 - k)]
         out[i] = temp_sum
+
 
 a_device, b_device, out_device = init_pb(a=a, out=np.zeros_like(out))
 
@@ -461,7 +478,10 @@ def dot_kernel_numba(a, b, out, size):
         stride //= 2
 
     if local_i == 0:
-        cuda.atomic.add(out, 0, shared[0]) # To avoid RACE CONDITION! Multiple blocks write to out[0] see below
+        cuda.atomic.add(
+            out, 0, shared[0]
+        )  # To avoid RACE CONDITION! Multiple blocks write to out[0] see below
+
 
 # Test
 SIZE = 8
@@ -478,7 +498,9 @@ threads_per_block = 256
 blocks_per_grid = (size + threads_per_block - 1) // threads_per_block
 
 # Launch kernel - a_device, b_device, out_device are all on GPU
-dot_kernel_numba[blocks_per_grid, threads_per_block](a_device, b_device, out_device, size)
+dot_kernel_numba[blocks_per_grid, threads_per_block](
+    a_device, b_device, out_device, size
+)
 
 result = out_device.copy_to_host()
 
@@ -495,137 +517,137 @@ print(f"Match: {np.allclose(result[0], expected)}")
 # 2. MODIFY: temp = temp + value # Add to it
 # 3. WRITE:  out[0] = temp       # Write back
 # ```
-# 
+#
 # **With multiple threads, these steps can interleave and lose updates:**
 # ```
 # Initial: out[0] = 0
-# 
+#
 # Thread A (Block 0):              Thread B (Block 1):
-# 1. READ: temp_A = 0             
-# 2. MODIFY: temp_A = 0 + 5       
+# 1. READ: temp_A = 0
+# 2. MODIFY: temp_A = 0 + 5
 #                                  1. READ: temp_B = 0      ← Still sees 0!
-# 3. WRITE: out[0] = 5            
+# 3. WRITE: out[0] = 5
 #                                  2. MODIFY: temp_B = 0 + 3 ← Uses old value!
 #                                  3. WRITE: out[0] = 3      ← Overwrites 5!
-# 
+#
 # Final: out[0] = 3  ❌ Should be 8!
 # ```
-# 
+#
 # ## What Atomics Do
-# 
+#
 # `cuda.atomic.add(out, 0, value)` **locks the memory location** so the entire operation completes before another thread can access it:
 # ```
 # Initial: out[0] = 0
-# 
+#
 # Thread A (Block 0):              Thread B (Block 1):
 # 🔒 LOCK out[0]
-# 1. READ: temp_A = 0             
-# 2. MODIFY: temp_A = 0 + 5       
-# 3. WRITE: out[0] = 5            
+# 1. READ: temp_A = 0
+# 2. MODIFY: temp_A = 0 + 5
+# 3. WRITE: out[0] = 5
 # 🔓 UNLOCK out[0]
 #                                  🔒 LOCK out[0]  ← Must wait for unlock
 #                                  1. READ: temp_B = 5      ← Sees updated value!
 #                                  2. MODIFY: temp_B = 5 + 3
 #                                  3. WRITE: out[0] = 8
 #                                  🔓 UNLOCK out[0]
-# 
+#
 # Final: out[0] = 8  ✅ Correct!
 # ```
 
 # ## Numba CUDA: Grid and Block Dimensions
-# 
+#
 # In **Numba CUDA**, you launch kernels with explicit grid and block dimensions:
 # ```python
 # from numba import cuda
 # import numpy as np
-# 
+#
 # @cuda.jit
 # def kernel(output):
 #     # Thread indices within the block
 #     tx = cuda.threadIdx.x
 #     ty = cuda.threadIdx.y
 #     tz = cuda.threadIdx.z
-#     
+#
 #     # Block indices within the grid
 #     bx = cuda.blockIdx.x
 #     by = cuda.blockIdx.y
 #     bz = cuda.blockIdx.z
-#     
+#
 #     # Block dimensions
 #     block_dim_x = cuda.blockDim.x
 #     block_dim_y = cuda.blockDim.y
-#     
+#
 #     # Global thread index
 #     i = bx * block_dim_x + tx
 #     j = by * block_dim_y + ty
-#     
+#
 #     output[i, j] = i * 1000 + j
-# 
+#
 # # Launch configuration
 # threads_per_block = (16, 16)  # Block dimensions: 16x16 = 256 threads per block
 # blocks_per_grid = (4, 8)       # Grid dimensions: 4x8 = 32 blocks total
-# 
+#
 # output = np.zeros((64, 128), dtype=np.int32)
 # kernel[blocks_per_grid, threads_per_block](output)
 # ```
-# 
+#
 # **Key concepts:**
 # - `kernel[grid, block](args)` - Launch syntax
 # - **Grid** = `(blocks_x, blocks_y, blocks_z)` - How many blocks
 # - **Block** = `(threads_x, threads_y, threads_z)` - How many threads per block
 # - Total threads = `grid_x × grid_y × grid_z × block_x × block_y × block_z`
-# 
+#
 # ---
-# 
+#
 # ## Triton: Program Grid
-# 
+#
 # In **Triton**, you specify a **program grid** and work with **program IDs**:
 # ```python
 # import triton
 # import triton.language as tl
-# 
+#
 # @triton.jit
 # def kernel(output_ptr, M, N, BLOCK_SIZE: tl.constexpr):
 #     # Program ID (like block index in CUDA)
 #     pid_x = tl.program_id(0)
 #     pid_y = tl.program_id(1)
-#     
+#
 #     # Compute offsets for this program
 #     row_start = pid_x * BLOCK_SIZE
 #     col_start = pid_y * BLOCK_SIZE
-#     
+#
 #     # Create a block of indices
 #     rows = row_start + tl.arange(0, BLOCK_SIZE)
 #     cols = col_start + tl.arange(0, BLOCK_SIZE)
-#     
+#
 #     # Triton handles the actual thread mapping automatically
 #     output = rows[:, None] * 1000 + cols[None, :]
-#     
+#
 #     # Store results
 #     mask = (rows[:, None] < M) & (cols[None, :] < N)
 #     tl.store(output_ptr + rows[:, None] * N + cols[None, :], output, mask=mask)
-# 
+#
 # # Launch configuration
 # M, N = 64, 128
 # BLOCK_SIZE = 16
-# 
+#
 # output = torch.zeros((M, N), dtype=torch.int32, device='cuda')
-# 
+#
 # # Grid: number of programs in each dimension
 # grid = (triton.cdiv(M, BLOCK_SIZE), triton.cdiv(N, BLOCK_SIZE))
 # kernel[grid](output, M, N, BLOCK_SIZE=BLOCK_SIZE)
 # ```
-# 
+#
 # **Key concepts:**
 # - `kernel[grid](args, BLOCK_SIZE=...)` - Launch syntax
 # - **Grid** = `(programs_x, programs_y, programs_z)` - Number of program instances
 # - **No explicit block/thread dimensions** - Triton handles threading automatically
 # - Work with **blocks of data** using `tl.arange()` and vectorized operations
-# 
+#
 # ---
-# 
+#
 # ## Comparison Table
-# 
+#
 # | Aspect | Numba CUDA | Triton |
 # |--------|------------|--------|
 # | **Launch syntax** | `kernel[grid, block](args)` | `kernel[grid](args, BLOCK=...)` |
@@ -636,11 +658,11 @@ print(f"Match: {np.allclose(result[0], expected)}")
 # | **Typical block** | `(threads_x, threads_y, threads_z)` | N/A (implicit in `BLOCK_SIZE`) |
 # | **Memory access** | Per-thread indexing | Vectorized block operations |
 # | **Abstraction level** | Low-level (like CUDA C) | High-level (compiler optimizes) |
-# 
+#
 # ---
-# 
+#
 # ## Practical Example: Vector Addition
-# 
+#
 # ### Numba CUDA Version:
 # ```python
 # @cuda.jit
@@ -648,14 +670,14 @@ print(f"Match: {np.allclose(result[0], expected)}")
 #     i = cuda.grid(1)  # Global thread index
 #     if i < n:
 #         c[i] = a[i] + b[i]
-# 
+#
 # # Launch
 # n = 1_000_000
 # threads_per_block = 256
 # blocks_per_grid = (n + threads_per_block - 1) // threads_per_block
 # vector_add_numba[blocks_per_grid, threads_per_block](a, b, c, n)
 # ```
-# 
+#
 # ### Triton Version:
 # ```python
 # @triton.jit
@@ -663,29 +685,27 @@ print(f"Match: {np.allclose(result[0], expected)}")
 #     pid = tl.program_id(0)
 #     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
 #     mask = offset < n
-#     
+#
 #     a = tl.load(a_ptr + offset, mask=mask)
 #     b = tl.load(b_ptr + offset, mask=mask)
 #     c = a + b
 #     tl.store(c_ptr + offset, c, mask=mask)
-# 
+#
 # # Launch
 # BLOCK_SIZE = 1024
 # grid = (triton.cdiv(n, BLOCK_SIZE),)
 # vector_add_triton[grid](a, b, c, n, BLOCK_SIZE=BLOCK_SIZE)
 # ```
-# 
+#
 # ---
-# 
+#
 # ## Key Takeaway
-# 
+#
 # - **Numba CUDA**: You think in terms of **blocks of threads** (2-level hierarchy: grid → blocks → threads)
 # - **Triton**: You think in terms of **programs operating on data blocks** (1-level: grid → programs, with implicit vectorization)
-# 
+#
 # Triton is conceptually **one level of "blocks"** in CUDA terms - each Triton program is roughly equivalent to a CUDA block, but Triton automatically handles the thread-level parallelism within that program.
 
 # In[ ]:
 
-
-
-
+print("GPU puzzles completed successfully!")
