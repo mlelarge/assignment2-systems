@@ -11,6 +11,8 @@ import torch
 import timeit
 import argparse
 import numpy as np
+import datetime as dt
+import csv
 
 # Parse arguments (or define them)
 parser = argparse.ArgumentParser()
@@ -30,6 +32,13 @@ parser.add_argument("--num_warmup", type=int, default=5)
 parser.add_argument("--num_steps", type=int, default=10)
 parser.add_argument("--mixed_precision", action="store_true", default=False)
 parser.add_argument("--memory_profile", action="store_true", default=False)
+parser.add_argument("--only_forward", action="store_true")
+parser.add_argument(
+    "--output_csv",
+    type=str,
+    default=None,
+    help="If given, append a single CSV row with all timings.",
+)
 args = parser.parse_args()
 
 model = models.BasicsTransformerLM(
@@ -96,6 +105,37 @@ def compute_forward_and_backward(context):
     return loss
 
 
+def save_results(bench_times, oom):
+    """Save benchmark results to CSV if requested."""
+    row = {
+        "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
+        "num_layers": args.num_layers,
+        "num_heads": args.num_heads,
+        "d_model": args.d_model,
+        "d_ff": args.d_ff,
+        "context_length": args.context_length,
+        "batch_size": args.batch_size,
+        "num_warmup": args.num_warmup,
+        "only_forward": args.only_forward,
+        # "bfloat16": args.bfloat16,
+        "mean_s": None if oom else float(bench_times.mean()),
+        "std_s": None if oom else float(bench_times.std()),
+        "oom": oom,
+        # "compile": args.compile,
+    }
+
+    if args.output_csv:
+        hdr = list(row.keys())
+        need_header = not os.path.exists(args.output_csv)
+        with open(args.output_csv, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=hdr)
+            if need_header:
+                w.writeheader()
+            w.writerow(row)
+
+    return row
+
+
 def run_benchmark():
     dtype = return_dtype()
     print(f"dtype: {dtype}")
@@ -104,56 +144,58 @@ def run_benchmark():
         if args.mixed_precision
         else nullcontext()
     )
-    # Warm-up
-    for _ in range(args.num_warmup):
-        compute_forward_and_loss(context)
 
-    if args.memory_profile:
-        torch.cuda.memory._record_memory_history(max_entries=100000)
+    if args.only_forward:
+        # Benchmark for forward only
+        # Warm-up
+        for _ in range(args.num_warmup):
+            compute_forward_and_loss(context)
 
-    # Benchmark for forward only
-    avg_time_benchmarks = []
-    for i in range(args.num_steps):
-        # print(f"Iteration {i}/{args.num_steps}")
-        start_time = timeit.default_timer()
-        compute_forward_and_loss(context)
+        if args.memory_profile:
+            torch.cuda.memory._record_memory_history(max_entries=100000)
+
+        avg_time_benchmarks = []
+        for i in range(args.num_steps):
+            # print(f"Iteration {i}/{args.num_steps}")
+            start_time = timeit.default_timer()
+            compute_forward_and_loss(context)
         end_time = timeit.default_timer()
         avg_time_benchmarks.append(end_time - start_time)
-    print(
-        f"Average time per step (forward only): {sum(avg_time_benchmarks) / args.num_steps:.6f} seconds"
-    )
-    print(f"Standard deviation: {np.std(np.array(avg_time_benchmarks)):.6f} seconds")
-    # Save snapshot
-    if args.memory_profile:
-        torch.cuda.memory._dump_snapshot("memory_forward_only.pickle")
+        # print(f"Average time per step (forward only): {sum(avg_time_benchmarks) / args.num_steps:.6f} seconds")
+        # print(f"Standard deviation: {np.std(np.array(avg_time_benchmarks)):.6f} seconds")
 
-    # Stop recording (important to avoid overhead)
-    if args.memory_profile:
-        torch.cuda.memory._record_memory_history(enabled=False)
+        # Save snapshot
+        if args.memory_profile:
+            torch.cuda.memory._dump_snapshot("memory_forward_only.pickle")
 
-    # Warm-up for forward and backward
-    for _ in range(args.num_warmup):
-        compute_forward_and_backward(context)
+        # Stop recording (important to avoid overhead)
+        if args.memory_profile:
+            torch.cuda.memory._record_memory_history(enabled=False)
 
-    if args.memory_profile:
-        torch.cuda.memory._record_memory_history(max_entries=100000)
+        return np.array(avg_time_benchmarks), False
+    else:
+        # Warm-up for forward and backward
+        for _ in range(args.num_warmup):
+            compute_forward_and_backward(context)
 
-    # Benchmark for forward and backward
-    avg_time_benchmarks = []
-    for i in range(args.num_steps):
-        # print(f"Iteration {i}/{args.num_steps}")
-        start_time = timeit.default_timer()
-        compute_forward_and_backward(context)
-        end_time = timeit.default_timer()
-        avg_time_benchmarks.append(end_time - start_time)
-    print(
-        f"Average time per step (forward + backward): {sum(avg_time_benchmarks) / args.num_steps:.6f} seconds"
-    )
-    print(f"Standard deviation: {np.std(np.array(avg_time_benchmarks)):.6f} seconds")
-    if args.memory_profile:
-        torch.cuda.memory._dump_snapshot("memory_backward.pickle")
-        torch.cuda.memory._record_memory_history(enabled=False)
+        if args.memory_profile:
+            torch.cuda.memory._record_memory_history(max_entries=100000)
+        # Benchmark for forward and backward
+        avg_time_benchmarks = []
+        for i in range(args.num_steps):
+            # print(f"Iteration {i}/{args.num_steps}")
+            start_time = timeit.default_timer()
+            compute_forward_and_backward(context)
+            end_time = timeit.default_timer()
+            avg_time_benchmarks.append(end_time - start_time)
+        # print(f"Average time per step (forward + backward): {sum(avg_time_benchmarks) / args.num_steps:.6f} seconds")
+        # print(f"Standard deviation: {np.std(np.array(avg_time_benchmarks)):.6f} seconds")
+        if args.memory_profile:
+            torch.cuda.memory._dump_snapshot("memory_backward.pickle")
+            torch.cuda.memory._record_memory_history(enabled=False)
+        return np.array(avg_time_benchmarks), False
 
 
 if __name__ == "__main__":
-    run_benchmark()
+    bench_times, oom = run_benchmark()
+    save_results(bench_times, oom)
